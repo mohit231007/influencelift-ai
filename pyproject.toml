@@ -37,8 +37,10 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/mohit231007/influencelift-ai"
+Homepage = "https://influencelift-ai.streamlit.app"
+Demo = "https://influencelift-ai.streamlit.app"
 Repository = "https://github.com/mohit231007/influencelift-ai"
+Documentation = "https://github.com/mohit231007/influencelift-ai#readme"
 Issues = "https://github.com/mohit231007/influencelift-ai/issues"
 
 [tool.setuptools.packages.find]
