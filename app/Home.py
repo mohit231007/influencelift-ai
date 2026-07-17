@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import pandas as pd
 import streamlit as st
 
@@ -11,10 +13,45 @@ from influencelift.simulation import compare_scenarios
 
 st.set_page_config(page_title="InfluenceLift AI", page_icon="📈", layout="wide")
 
+CORRECTION_LABELS = {
+    "followers_explicit_scale_parsed": "Converted the follower abbreviation to a full number",
+    "followers_inferred_as_thousands": "Interpreted a small follower value as thousands",
+    "followers_extreme_scale_repaired": "Repaired an implausibly large follower scale",
+    "engagement_percentage_symbol_removed": "Removed the percentage symbol from engagement rate",
+    "engagement_negative_sign_repaired": "Repaired a negative engagement-rate sign",
+    "spend_currency_symbol_removed": "Removed the currency symbol from ad spend",
+    "spend_negative_sign_repaired": "Repaired a negative ad-spend sign",
+    "spend_extreme_scale_repaired": "Repaired an implausibly large ad-spend scale",
+    "ContentQuality_missing": "Content quality was missing and was imputed by the model",
+}
+
+STATUS_LABELS = {
+    "valid": "Valid",
+    "valid_with_corrections": "Valid after automatic corrections",
+    "requires_review": "Requires review",
+}
+
 
 @st.cache_resource
 def model_bundle():
     return load_or_create_bundle()
+
+
+def _split_flags(value: Any) -> list[str]:
+    if value is None or pd.isna(value):
+        return []
+    return [flag.strip() for flag in str(value).split(",") if flag.strip()]
+
+
+def _friendly_flags(value: Any) -> list[str]:
+    return [
+        CORRECTION_LABELS.get(flag, flag.replace("_", " ").strip().capitalize())
+        for flag in _split_flags(value)
+    ]
+
+
+def _status_label(status: str) -> str:
+    return STATUS_LABELS.get(status, status.replace("_", " ").title())
 
 
 bundle = model_bundle()
@@ -26,11 +63,30 @@ st.caption(
     "and marketing scenario analysis."
 )
 
+link_col, spacer_col = st.columns([1, 4])
+with link_col:
+    st.link_button(
+        "View source on GitHub",
+        "https://github.com/mohit231007/influencelift-ai",
+        use_container_width=True,
+    )
+with spacer_col:
+    st.caption(
+        "Public demo predictions use a deterministic synthetic training set because the original "
+        "challenge data is not redistributed."
+    )
+
 metric_columns = st.columns(4)
-metric_columns[0].metric("Model", "Ridge")
-metric_columns[1].metric("Case-study RMSE", "2,000")
-metric_columns[2].metric("Case-study R²", "0.493")
-metric_columns[3].metric("Loaded version", bundle.model_version)
+metric_columns[0].metric("Selected model", "Ridge")
+metric_columns[1].metric("Original case-study RMSE", "2,000")
+metric_columns[2].metric("Original case-study R²", "0.493")
+metric_columns[3].metric("Loaded demo version", bundle.model_version)
+
+st.info(
+    "The benchmark metrics above come from the original case-study dataset. "
+    "The live app loads a synthetic demo model, so the metrics shown under Model information "
+    "will differ."
+)
 
 predictor_tab, batch_tab, simulator_tab, model_tab = st.tabs(
     ["Campaign predictor", "Batch predictions", "Scenario simulator", "Model information"]
@@ -38,6 +94,7 @@ predictor_tab, batch_tab, simulator_tab, model_tab = st.tabs(
 
 with predictor_tab:
     st.markdown("### Forecast a single campaign")
+    st.caption("Messy formats such as `125K`, `3.7%`, and `£5,500` are accepted directly.")
     left, right = st.columns(2)
     with left:
         followers = st.text_input("Followers", value="125K")
@@ -62,16 +119,33 @@ with predictor_tab:
         report = audit_campaign_data(record)
         a, b, c = st.columns(3)
         a.metric("Predicted sales", f"{prediction['Predicted_Sales_Units']:,} units")
-        b.metric("Lower interval", f"{prediction['Prediction_Lower_95']:,}")
-        c.metric("Upper interval", f"{prediction['Prediction_Upper_95']:,}")
-        st.info(f"Data-quality status: **{report.status}**")
-        if prediction["Corrections_Applied"]:
-            st.write("Corrections:", prediction["Corrections_Applied"])
-        if prediction["Extrapolation_Warnings"]:
-            st.warning(f"Extrapolation warning: {prediction['Extrapolation_Warnings']}")
+        b.metric("95% lower estimate", f"{prediction['Prediction_Lower_95']:,}")
+        c.metric("95% upper estimate", f"{prediction['Prediction_Upper_95']:,}")
+
+        status_text = _status_label(report.status)
+        if report.status == "requires_review":
+            st.warning(f"Data-quality status: **{status_text}**")
+        else:
+            st.success(f"Data-quality status: **{status_text}**")
+
+        corrections = _friendly_flags(prediction["Corrections_Applied"])
+        if corrections:
+            st.markdown("**Automatic corrections applied**")
+            for correction in corrections:
+                st.markdown(f"- {correction}")
+
+        warnings = _friendly_flags(prediction["Extrapolation_Warnings"])
+        if warnings:
+            st.warning("Prediction reliability warning:\n\n" + "\n".join(f"- {item}" for item in warnings))
+
+        st.caption(
+            "The interval reflects historical model error. It is not a guarantee, and campaign "
+            "changes should not be interpreted as causal effects."
+        )
 
 with batch_tab:
     st.markdown("### Upload campaign data")
+    st.caption("Upload a CSV to audit data quality and generate campaign-level forecasts.")
     uploaded = st.file_uploader("CSV file", type=["csv"])
     if uploaded is None:
         st.code(
@@ -80,11 +154,31 @@ with batch_tab:
         )
     else:
         uploaded_frame = pd.read_csv(uploaded)
+        st.markdown("#### Input preview")
         st.dataframe(uploaded_frame.head(20), use_container_width=True)
         try:
             report = audit_campaign_data(uploaded_frame)
-            st.json(report.to_dict())
+            report_data = report.to_dict()
+            total_missing = sum(report_data.get("missing_by_column", {}).values())
+            total_corrections = sum(report_data.get("correction_counts", {}).values())
+
+            status_col, row_col, missing_col, correction_col = st.columns(4)
+            status_col.metric("Data status", _status_label(report.status))
+            row_col.metric("Rows received", f"{len(uploaded_frame):,}")
+            missing_col.metric("Missing cells", f"{total_missing:,}")
+            correction_col.metric("Corrections detected", f"{total_corrections:,}")
+
+            if report.status == "requires_review":
+                st.warning(
+                    "At least one field requires review. Predictions are still generated where "
+                    "the model can safely impute missing values."
+                )
+
+            with st.expander("View detailed data-quality audit"):
+                st.json(report_data)
+
             predictions = predict_campaigns(bundle, uploaded_frame)
+            st.markdown("#### Prediction results")
             st.dataframe(predictions, use_container_width=True)
             st.download_button(
                 "Download predictions",
@@ -98,6 +192,9 @@ with batch_tab:
 
 with simulator_tab:
     st.markdown("### Compare a baseline and proposed campaign")
+    st.caption(
+        "Use the scenario simulator to compare configurations before committing campaign budget."
+    )
     baseline_col, proposed_col = st.columns(2)
     with baseline_col:
         st.markdown("#### Baseline")
@@ -138,15 +235,44 @@ with simulator_tab:
         st.caption("Scenario changes are predictive associations, not causal guarantees.")
 
 with model_tab:
-    st.markdown("### Loaded model")
-    st.json(
-        {
-            "version": bundle.model_version,
-            "alpha": bundle.alpha,
-            "metrics": bundle.metrics,
-            "training_ranges": bundle.training_ranges,
-        }
+    st.markdown("### Original case-study benchmark")
+    benchmark = pd.DataFrame(
+        [
+            {"Model": "Tuned Ridge (selected)", "RMSE": 2000.36, "MAE": 1592.73, "R²": 0.4925},
+            {"Model": "Linear Regression", "RMSE": 2000.36, "MAE": 1592.73, "R²": 0.4925},
+            {"Model": "Tuned XGBoost", "RMSE": 2016.98, "MAE": 1609.08, "R²": 0.4840},
+        ]
     )
+    st.dataframe(benchmark, hide_index=True, use_container_width=True)
+
+    st.markdown("### Loaded public demo model")
+    demo_metrics = bundle.metrics
+    first, second, third, fourth = st.columns(4)
+    first.metric("Version", bundle.model_version)
+    second.metric("Cross-validated RMSE", f"{demo_metrics.get('rmse', 0):,.0f}")
+    third.metric("Cross-validated MAE", f"{demo_metrics.get('mae', 0):,.0f}")
+    fourth.metric("Cross-validated R²", f"{demo_metrics.get('r2', 0):.3f}")
+
+    st.info(
+        "These demo metrics come from synthetic data generated at first run. They verify the "
+        "end-to-end application but are not substitutes for the original case-study benchmark."
+    )
+
+    ranges = pd.DataFrame(bundle.training_ranges).T.reset_index(names="Feature")
+    st.markdown("#### Demo-model training ranges")
+    st.dataframe(ranges, hide_index=True, use_container_width=True)
+
+    with st.expander("View technical model metadata"):
+        st.json(
+            {
+                "version": bundle.model_version,
+                "alpha": bundle.alpha,
+                "metrics": bundle.metrics,
+                "training_ranges": bundle.training_ranges,
+            }
+        )
+
     st.markdown(
-        "See `MODEL_CARD.md` for intended use, limitations, validation results, and monitoring guidance."
+        "See [`MODEL_CARD.md`](https://github.com/mohit231007/influencelift-ai/blob/main/"
+        "MODEL_CARD.md) for intended use, limitations, validation results, and monitoring guidance."
     )
