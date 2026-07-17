@@ -16,12 +16,52 @@ function Write-Step {
     Write-Host "`n==> $Message" -ForegroundColor Cyan
 }
 
+function Test-PythonCandidate {
+    param(
+        [Parameter(Mandatory = $true)][string]$Command,
+        [string[]]$Arguments = @()
+    )
+
+    # A stale Windows Python launcher can exist even when the referenced
+    # interpreter has been uninstalled. Native stderr must not stop the
+    # entire QA script before the next candidate is tested.
+    try {
+        $previousPreference = $ErrorActionPreference
+        $ErrorActionPreference = "Continue"
+        $versionOutput = & $Command @Arguments -c "import sys; print('.'.join(map(str, sys.version_info[:3]))); raise SystemExit(0 if sys.version_info >= (3, 10) else 1)" 2>&1
+        $exitCode = $LASTEXITCODE
+    }
+    catch {
+        $versionOutput = $null
+        $exitCode = 1
+    }
+    finally {
+        $ErrorActionPreference = $previousPreference
+    }
+
+    if ($exitCode -ne 0) {
+        return $null
+    }
+
+    $version = ($versionOutput | Select-Object -Last 1).ToString().Trim()
+    return @{
+        Command = $Command
+        Arguments = $Arguments
+        Version = $version
+    }
+}
+
 function Resolve-PythonLauncher {
+    # Prefer direct executables because the Windows py launcher may contain
+    # stale registrations for Python versions that are no longer installed.
     $candidates = @(
+        @{ Command = "python"; Arguments = @() },
+        @{ Command = "python3"; Arguments = @() },
+        @{ Command = "py"; Arguments = @("-3.13") },
         @{ Command = "py"; Arguments = @("-3.12") },
         @{ Command = "py"; Arguments = @("-3.11") },
         @{ Command = "py"; Arguments = @("-3.10") },
-        @{ Command = "python"; Arguments = @() }
+        @{ Command = "py"; Arguments = @("-3") }
     )
 
     foreach ($candidate in $candidates) {
@@ -29,16 +69,19 @@ function Resolve-PythonLauncher {
             continue
         }
 
-        & $candidate.Command @($candidate.Arguments) -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)" 2>$null
-        if ($LASTEXITCODE -eq 0) {
-            return $candidate
+        $resolved = Test-PythonCandidate -Command $candidate.Command -Arguments $candidate.Arguments
+        if ($null -ne $resolved) {
+            return $resolved
         }
     }
 
-    throw "Python 3.10, 3.11, or 3.12 was not found. Install Python 3.12 and rerun this script."
+    throw "Python 3.10 or newer was not found. Install a supported Python version and rerun this script."
 }
 
 $launcher = Resolve-PythonLauncher
+$launcherLabel = "$($launcher.Command) $($launcher.Arguments -join ' ')".Trim()
+Write-Host "Using Python $($launcher.Version) via: $launcherLabel" -ForegroundColor Green
+
 $venvPython = Join-Path $RepoRoot ".venv\Scripts\python.exe"
 
 if (-not (Test-Path $venvPython)) {
