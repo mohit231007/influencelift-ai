@@ -2,18 +2,45 @@
 
 > **Predict influencer campaign sales before the budget is spent.**
 
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-Streamlit-FF4B4B?logo=streamlit&logoColor=white)](https://influencelift-ai.streamlit.app)
 [![CI](https://github.com/mohit231007/influencelift-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/mohit231007/influencelift-ai/actions/workflows/ci.yml)
+[![Deployment smoke test](https://github.com/mohit231007/influencelift-ai/actions/workflows/deployment-smoke.yml/badge.svg)](https://github.com/mohit231007/influencelift-ai/actions/workflows/deployment-smoke.yml)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Model](https://img.shields.io/badge/model-Ridge%20Regression-6f42c1.svg)](MODEL_CARD.md)
 
-**InfluenceLift AI** is an end-to-end marketing analytics project that turns unreliable influencer-campaign data into defensible sales forecasts. It combines a configurable data-quality engine, reproducible model training, an interactive Streamlit decision simulator, and a FastAPI inference service.
+**InfluenceLift AI** is an end-to-end marketing analytics platform that turns unreliable influencer-campaign data into defensible sales forecasts. It combines an auditable data-quality engine, reproducible model training, an interactive Streamlit decision simulator, and a FastAPI inference service.
 
-The project is intentionally designed as a production-style portfolio rather than a single notebook.
+### [Launch the live application](https://influencelift-ai.streamlit.app) · [Read the model card](MODEL_CARD.md) · [Explore the architecture](docs/architecture.md)
+
+## Live demo
+
+The public application is available at:
+
+**https://influencelift-ai.streamlit.app**
+
+Try the campaign predictor with:
+
+| Field | Example |
+|---|---:|
+| Followers | `125K` |
+| Engagement rate | `3.7%` |
+| Ad spend | `£5,500` |
+| Content quality | `8.2` |
+
+The live application also supports:
+
+- Batch CSV uploads and downloadable predictions
+- Campaign scenario comparison
+- Prediction intervals and extrapolation warnings
+- Data-quality correction summaries
+- Model metrics and training-range inspection
+
+The hosted demo trains a deterministic synthetic model because the original challenge dataset is not redistributed. The validated case-study metrics below come from the original supplied data.
 
 ## Why this project matters
 
-Marketing teams frequently receive campaign data with currency symbols, percentages, mixed follower units, missing values, impossible values, and extreme outliers. A model that assumes clean inputs will fail exactly when a business needs it most.
+Marketing teams frequently receive campaign data with currency symbols, percentages, mixed follower units, missing values, impossible values, and extreme outliers. A model that assumes clean inputs will fail precisely when a business needs it most.
 
 InfluenceLift AI addresses both parts of the problem:
 
@@ -22,15 +49,16 @@ InfluenceLift AI addresses both parts of the problem:
 
 ## Key capabilities
 
-- Parse values such as `£5,000`, `3.2%`, `125K`, and `1.4M`.
-- Detect missing fields, scale anomalies, negative spend, invalid quality scores, and schema problems.
-- Train a leakage-safe scikit-learn pipeline with imputation, scaling, and regularised regression.
-- Evaluate models with out-of-fold RMSE, MAE, R², and fold stability.
-- Generate campaign-level predictions and empirical prediction intervals.
-- Simulate changes to followers, engagement, spend, and content quality.
-- Upload batches through Streamlit and download prediction results.
-- Serve predictions through documented FastAPI endpoints.
-- Run tests, linting, and packaging checks automatically with GitHub Actions.
+- Parse values such as `£5,000`, `3.2%`, `125K`, and `1.4M`
+- Detect missing fields, scale anomalies, negative spend, invalid quality scores, and schema problems
+- Train a leakage-safe scikit-learn pipeline with imputation, scaling, and regularised regression
+- Evaluate models with out-of-fold RMSE, MAE, R², and fold stability
+- Generate campaign-level predictions and empirical prediction intervals
+- Simulate changes to followers, engagement, spend, and content quality
+- Upload batches through Streamlit and download prediction results
+- Serve predictions through documented FastAPI endpoints
+- Validate runtime behaviour through automated deployment smoke tests
+- Run linting, tests, and compilation across Python 3.10, 3.11, and 3.12
 
 ## Validated case-study result
 
@@ -67,13 +95,13 @@ influencelift-ai/
 ├── app/                         # Streamlit product interface
 ├── api/                         # FastAPI service
 ├── src/influencelift/           # Reusable Python package
-├── scripts/                     # Train, predict, and demo-data commands
+├── scripts/                     # Train, predict, demo-data, and QA commands
 ├── tests/                       # Unit and API tests
 ├── data/sample/                 # Synthetic public demonstration data
-├── docs/                        # Architecture and methodology
+├── docs/                        # Architecture, deployment, and methodology
 ├── notebooks/                   # Original analytical case study
 ├── reports/                     # Submission-ready case-study report
-├── .github/workflows/           # Continuous integration
+├── .github/workflows/           # CI and deployment smoke tests
 ├── Dockerfile
 ├── docker-compose.yml
 └── pyproject.toml
@@ -130,11 +158,22 @@ streamlit run app/Home.py
 uvicorn api.main:app --reload --port 8000
 ```
 
-Open the automatically generated API documentation at `http://127.0.0.1:8000/docs`.
+Open the generated API documentation at `http://127.0.0.1:8000/docs`.
+
+## One-command Windows QA
+
+The repository includes an end-to-end PowerShell QA workflow:
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+.\scripts\qa_local.ps1 -LaunchApp -LaunchApi
+```
+
+It creates a virtual environment, installs dependencies, runs linting and tests, compiles the code, trains a QA model, generates batch predictions, and launches both services.
 
 ## Docker
 
-Run the Streamlit application and FastAPI service together:
+Run Streamlit and FastAPI together:
 
 ```bash
 docker compose up --build
@@ -170,36 +209,37 @@ Example response:
 
 ```json
 {
-  "predicted_sales_units": 10842,
-  "prediction_lower_bound": 6901,
-  "prediction_upper_bound": 14783,
+  "predicted_sales_units": 13333,
+  "prediction_lower_bound": 9352,
+  "prediction_upper_bound": 17314,
   "data_quality_status": "valid_with_corrections",
   "corrections_applied": [
     "followers_explicit_scale_parsed",
     "engagement_percentage_symbol_removed",
     "spend_currency_symbol_removed"
   ],
-  "model_version": "1.0.0"
+  "extrapolation_warnings": [],
+  "model_version": "demo-1.0.0"
 }
 ```
 
-Prediction values will vary with the trained model.
+Prediction values depend on the trained model bundle.
 
 ## Data policy
 
-The original challenge datasets are **not committed** because the repository does not assume redistribution rights. The public sample under `data/sample/` is synthetic and is safe for demonstrations and automated tests.
+The original challenge datasets are **not committed** because the repository does not assume redistribution rights. The public sample under `data/sample/` is synthetic and safe for demonstrations and automated tests.
 
-To train with the original files, place them locally under `data/raw/`. That directory is ignored by Git.
+To train with authorised source files, place them locally under `data/raw/`. That directory is ignored by Git.
 
 ## Business interpretation
 
 The selected model is useful for:
 
-- Pre-campaign sales forecasting.
-- Comparing candidate creators or campaign configurations.
-- Testing budget and content-quality scenarios.
-- Identifying unreliable input data before decisions are made.
-- Communicating model uncertainty instead of presenting forecasts as guarantees.
+- Pre-campaign sales forecasting
+- Comparing candidate creators or campaign configurations
+- Testing budget and content-quality scenarios
+- Identifying unreliable input data before decisions are made
+- Communicating model uncertainty instead of presenting forecasts as guarantees
 
 The model estimates associations, not causal effects. Increasing spend does not automatically cause the predicted sales increase because campaign assignment is not randomised. See [MODEL_CARD.md](MODEL_CARD.md) for limitations and responsible-use guidance.
 
@@ -214,6 +254,7 @@ python -m compileall src api app scripts
 ## Documentation
 
 - [System architecture](docs/architecture.md)
+- [Deployment guide](docs/deployment.md)
 - [Data-cleaning design](docs/data-cleaning.md)
 - [Model development](docs/model-development.md)
 - [Model card](MODEL_CARD.md)
@@ -227,11 +268,12 @@ python -m compileall src api app scripts
 - [x] FastAPI prediction endpoints
 - [x] Synthetic demonstration data
 - [x] Tests and continuous integration
-- [ ] SHAP explanations for nonlinear challengers
+- [x] Deployment smoke testing
+- [x] Hosted public demo
+- [ ] Local prediction explanations
 - [ ] MLflow experiment tracking
 - [ ] Evidently drift reports
 - [ ] Constrained campaign-budget optimisation
-- [ ] Hosted public demo
 
 ## Author
 
