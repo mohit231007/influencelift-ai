@@ -1,0 +1,11 @@
+cff-version: 1.2.0
+message: "If you use InfluenceLift AI, please cite this repository."
+title: "InfluenceLift AI"
+type: software
+authors:
+  - family-names: Bhatnagar
+    given-names: Mohit
+repository-code: "https://github.com/mohit231007/influencelift-ai"
+license: MIT
+version: 1.0.0
+date-released: 2026-07-17

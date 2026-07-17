@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Environments
+.venv/
+venv/
+env/
+.env
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Data and generated artifacts
+data/raw/*
+!data/raw/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
+data/generated/*
+!data/generated/.gitkeep
+artifacts/*
+!artifacts/README.md
+
+# Notebook checkpoints
+.ipynb_checkpoints/
+
+# Build
+build/
+dist/
+*.egg-info/
